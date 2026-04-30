@@ -55,14 +55,15 @@ EMAIL BODY STRUCTURE:
 7. Signature:
    - Include full name.
    - Include phone and email only when present.
-   - Include at most three links: LinkedIn, GitHub profile, and a true
-     portfolio/personal website if present. Do not dump every project URL.
-   - Do not label a GitHub repository as Portfolio.
+   - Include only the links listed in application_links. These links were
+     selected for this specific application.
+   - Do not add other links from memory or from older drafts.
 
 STRICT RULES:
 - Body must be 120-180 words unless there is very little resume data.
 - Never invent facts, metrics, company details, recipient names, or URLs.
 - Never omit company experience/YOE when they are present in the context.
+- Never include links outside application_links.
 - Do not use generic filler such as "I hope this email finds you well",
   "I am passionate about", "leverage my skills", "synergy", or "dynamic team".
 - Avoid weak filler like "I am confident my experience aligns well".
@@ -81,13 +82,14 @@ def _expected_subject(context: dict) -> str:
 def _context_links(context: dict) -> list[dict]:
     links = context.get("application_links") or []
     if links:
-        allowed_labels = {"linkedin", "github", "portfolio"}
-        filtered_links = [
-            link
-            for link in links
-            if (link.get("label") or "").lower() in allowed_labels
+        return [
+            {
+                "label": link.get("label"),
+                "url": link.get("url"),
+            }
+            for link in links[:3]
+            if link.get("url")
         ]
-        return filtered_links[:3]
 
     fallback_links = []
     for field, label in (

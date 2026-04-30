@@ -1,5 +1,6 @@
 import os
 import json
+from urllib.parse import urlparse
 from google import genai
 from google.genai import types
 
@@ -22,6 +23,31 @@ def _dedupe_preserve_order(values: list[str]) -> list[str]:
     return deduped
 
 
+def _infer_link_label(url: str, source_label=None) -> str:
+    parsed = urlparse(url)
+    netloc = parsed.netloc.lower()
+    path_parts = [part for part in parsed.path.strip("/").split("/") if part]
+
+    if "linkedin.com" in netloc:
+        return "LinkedIn"
+    if "github.com" in netloc:
+        return "GitHub" if len(path_parts) <= 1 else "Project"
+    if "vercel.app" in netloc or "netlify.app" in netloc:
+        return "Live Demo"
+    if source_label and source_label != "Link":
+        return source_label
+    return "Portfolio"
+
+
+def _link(url, label=None):
+    if not url:
+        return None
+    return {
+        "label": _infer_link_label(url, label),
+        "url": url,
+    }
+
+
 def _candidate_links(resume_data: dict) -> list[dict]:
     links = []
     field_labels = [
@@ -30,12 +56,26 @@ def _candidate_links(resume_data: dict) -> list[dict]:
         ("portfolio_url", "Portfolio"),
     ]
     for field, label in field_labels:
-        url = resume_data.get(field)
-        if url:
-            links.append({"label": label, "url": url})
+        link = _link(resume_data.get(field), label)
+        if link:
+            links.append(link)
+
+    for url in resume_data.get("links") or []:
+        link = _link(url)
+        if link:
+            links.append(link)
 
     for url in resume_data.get("other_links") or []:
-        links.append({"label": "Link", "url": url})
+        link = _link(url)
+        if link:
+            links.append(link)
+
+    for project in resume_data.get("projects") or []:
+        if not isinstance(project, dict):
+            continue
+        link = _link(project.get("url"), project.get("name") or "Project")
+        if link:
+            links.append(link)
 
     seen = set()
     deduped = []
@@ -49,6 +89,48 @@ def _candidate_links(resume_data: dict) -> list[dict]:
         seen.add(key)
         deduped.append(link)
     return deduped
+
+
+def _selected_application_links(selected_links: list[dict], all_links: list[dict]) -> list[dict]:
+    allowed_by_url = {link["url"]: link for link in all_links if link.get("url")}
+    selected = []
+    seen = set()
+
+    for link in selected_links or []:
+        if not isinstance(link, dict):
+            continue
+        url = link.get("url")
+        if not url or url not in allowed_by_url or url in seen:
+            continue
+
+        source_link = allowed_by_url[url]
+        selected.append(
+            {
+                "label": link.get("label") or source_link.get("label"),
+                "url": url,
+                "reason": link.get("reason"),
+            }
+        )
+        seen.add(url)
+
+    return selected[:3]
+
+
+def _fallback_application_links(all_links: list[dict]) -> list[dict]:
+    """
+    Conservative fallback if the model fails to select links.
+
+    Prefer broad identity links before specific project/demo links so the email
+    never dumps every extracted URL.
+    """
+    selected = []
+    for link in all_links:
+        label = (link.get("label") or "").lower()
+        if label in {"linkedin", "github", "portfolio"}:
+            selected.append(link)
+        if len(selected) == 2:
+            break
+    return selected
 
 
 def _experience_entries(resume_data: dict) -> list[dict]:
@@ -69,6 +151,8 @@ def _experience_entries(resume_data: dict) -> list[dict]:
 
 
 def _enforce_resume_identity(context: dict, resume_data: dict) -> dict:
+    all_links = _candidate_links(resume_data)
+
     context["candidate_name"] = (
         context.get("candidate_name")
         or resume_data.get("name")
@@ -89,7 +173,11 @@ def _enforce_resume_identity(context: dict, resume_data: dict) -> dict:
     context["linkedin_url"] = resume_data.get("linkedin_url") or context.get("linkedin_url")
     context["github_url"] = resume_data.get("github_url") or context.get("github_url")
     context["portfolio_url"] = resume_data.get("portfolio_url") or context.get("portfolio_url")
-    context["application_links"] = _candidate_links(resume_data)
+    context["all_candidate_links"] = all_links
+    context["application_links"] = (
+        _selected_application_links(context.get("application_links") or [], all_links)
+        or _fallback_application_links(all_links)
+    )
     context["candidate_headline"] = (
         context.get("candidate_headline")
         or resume_data.get("headline")
@@ -199,7 +287,7 @@ Return ONLY a valid JSON object matching this schema:
   "linkedin_url": "string or null",
   "github_url": "string or null",
   "application_links": [
-    {"label": "string", "url": "string"}
+    {"label": "string", "url": "string", "reason": "string or null"}
   ]
 }
 
@@ -232,8 +320,16 @@ Rules:
   Maximum 2 sentences. Do NOT hallucinate facts not present in the snippets.
 - "application_angle" should be one sentence explaining why this candidate is a
   credible fit for this role using only resume and job data.
-- "application_links" must use the pre-extracted candidate links exactly as
-  provided. Do not add or edit URLs.
+- "application_links" must be an intelligent selection of 1-3 links from
+  PRE-EXTRACTED CANDIDATE LINKS. Use exact URLs only; do not add or edit URLs.
+- Link selection must be personalized to this role:
+  * LinkedIn is useful for professional identity.
+  * GitHub/profile is useful for software, data, AI, engineering, or technical roles.
+  * A live demo, portfolio, or project repo is useful only when it directly
+    supports the role requirements or a project you selected as evidence.
+  * Do not include every extracted link. Do not include multiple project links
+    unless the email will actually reference those projects.
+  * Prefer fewer, more relevant links over a long signature.
 - "hr_email" must be set to the pre-resolved value provided. Do not change it.
 - Return ONLY the JSON object. No markdown, no explanation.
 """
