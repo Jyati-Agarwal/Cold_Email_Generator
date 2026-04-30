@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import json
 import re
-import base64
 import os
 from google import genai
 from google.genai import types
@@ -38,24 +39,36 @@ def parse_job_description(
         regex_emails = list(set(re.findall(email_pattern, text)))
 
     system_instruction = """
-You are an expert job description parser. Extract structured data from the
-provided job description and return it strictly as a valid JSON object
-matching this schema:
+You are an expert job description parser. Extract structured hiring context
+from the provided job description or screenshot and return it strictly as a
+valid JSON object matching this schema:
 
 {
   "company_name": "string or null",
   "role": "string or null",
+  "location": "string or null",
+  "employment_type": "string or null",
+  "seniority": "string or null",
   "emails": ["string"],
   "has_explicit_email": true or false,
   "apply_instructions": "string or null",
-  "key_requirements": ["string"]
+  "key_requirements": ["string"],
+  "responsibilities": ["string"],
+  "nice_to_have": ["string"],
+  "company_context": "string or null",
+  "job_url": "string or null",
+  "recipient_name": "string or null"
 }
 
 Rules:
 - "key_requirements" must list the top 5 most important skills or
   qualifications from the job description. Return exactly 5 if possible.
+- "responsibilities" must list the top 3 role responsibilities if present.
+- "nice_to_have" must include optional/preferred skills only if clearly present.
 - "emails" should include any contact or application email addresses
   visible in the description.
+- "recipient_name" should be a recruiter/hiring manager/contact name only if
+  explicitly visible.
 - If a field is not present, use null for strings and [] for lists.
 - Return ONLY the JSON object. No markdown, no explanation.
 """
@@ -94,6 +107,7 @@ Rules:
         # FIX 2: Enforce max 5 key_requirements — slice after parsing
         requirements: list[str] = result.get("key_requirements") or []
         result["key_requirements"] = requirements[:5]
+        result["responsibilities"] = (result.get("responsibilities") or [])[:3]
 
         return result
 

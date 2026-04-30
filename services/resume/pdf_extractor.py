@@ -1,5 +1,8 @@
+from __future__ import annotations
+
+import re
 import fitz  # PyMuPDF
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 def extract_links_from_pdf(pdf_path: str) -> dict:
     """
@@ -10,7 +13,9 @@ def extract_links_from_pdf(pdf_path: str) -> dict:
     links = {
         "github": None,
         "linkedin": None,
+        "portfolio": None,
         "email": None,
+        "all_links": [],
         "other": [],
         "source": "annotation"
     }
@@ -25,10 +30,15 @@ def extract_links_from_pdf(pdf_path: str) -> dict:
                 uri = link.get("uri", "")
                 if not uri:
                     continue
-                uri = uri.strip()
+                uri = _normalize_uri(uri)
+                if not uri:
+                    continue
                 if not _is_valid_uri(uri):
                     continue
                 all_uris.append(uri)
+
+        all_uris = _dedupe_preserve_order(all_uris)
+        links["all_links"] = [uri for uri in all_uris if not uri.lower().startswith("mailto:")]
 
         for uri in all_uris:
             lower = uri.lower()
@@ -39,8 +49,10 @@ def extract_links_from_pdf(pdf_path: str) -> dict:
             elif "linkedin.com" in lower and links["linkedin"] is None:
                 links["linkedin"] = uri
             elif uri.startswith("mailto:"):
-                links["email"] = uri.replace("mailto:", "").strip()
+                links["email"] = _email_from_mailto(uri)
             else:
+                if links["portfolio"] is None:
+                    links["portfolio"] = uri
                 if uri not in links["other"]:
                     links["other"].append(uri)
 
@@ -49,6 +61,41 @@ def extract_links_from_pdf(pdf_path: str) -> dict:
             doc.close()
 
     return links
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen = set()
+    deduped = []
+    for value in values:
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(value)
+    return deduped
+
+
+def _normalize_uri(uri: str) -> str | None:
+    cleaned = uri.strip().rstrip(".,;:!?)\"]}'")
+    if not cleaned:
+        return None
+
+    if cleaned.lower().startswith("mailto:"):
+        return cleaned
+
+    if cleaned.lower().startswith("www."):
+        cleaned = f"https://{cleaned}"
+
+    if not re.match(r"(?i)^https?://", cleaned):
+        return None
+
+    return cleaned
+
+
+def _email_from_mailto(uri: str) -> str | None:
+    parsed = urlparse(uri)
+    email = unquote(parsed.path).strip()
+    return email or None
 
 
 def _is_valid_uri(uri: str) -> bool:

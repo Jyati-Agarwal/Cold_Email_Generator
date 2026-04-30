@@ -10,77 +10,110 @@ class EmailGenerationError(Exception):
 
 
 SYSTEM_INSTRUCTION = """
-You are writing a professional cold job application email on behalf of a candidate.
-Your goal is to write something direct, specific, and human — not a cover letter.
+You are an expert job-application cold email writer. Write a direct,
+specific, human email that feels like a sharp application note, not a cover
+letter and not a marketing sequence.
 
-SUBJECT LINE RULE — follow this exactly, no exceptions:
-Format: "Application for [Role Name] – [Candidate Full Name]"
-Example: "Application for Junior Data Analyst – Jyati Agarwal"
-Do NOT use project names, metrics, achievements, or creative angles in the subject line.
-Do NOT deviate from this format under any circumstance.
+What good job-application outreach does:
+- Uses a clear, searchable subject line.
+- Opens with a specific company/role hook only when factual context exists.
+- Proves fit with 2-3 resume-backed facts, preferring metrics, shipped work,
+  technical depth, internships, production impact, or standout projects.
+- Makes one low-friction next-step ask.
+- Keeps the message concise and easy to scan.
 
-EMAIL BODY STRUCTURE — follow this order exactly:
+SUBJECT LINE RULE:
+- Return the exact subject line supplied in EXPECTED SUBJECT.
+- Do not add metrics, project names, emojis, or clickbait to the subject.
 
-1. Greeting: "Hi there," — always use this if no recipient name is available
-
-2. Opening (1 sentence): One genuine, specific observation about the company
-   derived ONLY from the company_summary field. If company_summary is null,
-   skip this sentence entirely — do not invent or hallucinate company details.
-
-3. Intent (1 sentence): "I'm writing to express my interest in the [Role Name] position."
-
-4. Value proof (2 sentences maximum):
-   - Sentence 1: Mention the strongest_project name and what it does technically.
-     Include a real metric only if one is present in the data — do not invent numbers.
-   - Sentence 2: Mention the strongest_experience key_achievement.
-     Again, only use metrics that are explicitly provided.
-
-5. Skill alignment (1 sentence): Connect 1–2 skills from top_3_matching_skills
-   to the role's actual requirements. Be specific — name the skills explicitly.
-
-6. End with a good professional closing line based on the context of the resume and job description, for example - Would you be open to a 15-minute call this week?
-
-7. Sign-off:
-   "Best,
-   [Full Name]"
-   Then on separate lines, include LinkedIn and GitHub URLs only if they are
-   non-null in the data. If null, omit them entirely — do not write placeholder text.
+EMAIL BODY STRUCTURE:
+1. Greeting:
+   - Use "Hi [Recipient Name]," when recipient_name is present.
+   - Otherwise use "Hi there,".
+2. Opening:
+   - If company_summary exists, write one specific sentence connecting the
+     company or role context to the candidate.
+   - If company_summary is null, skip the company hook and start with the role
+     intent.
+3. Intent:
+   - State the candidate is applying for/interested in the role.
+4. Proof:
+   - Include 2-3 concise proof points from best_evidence, strongest_project,
+     strongest_experience, or application_angle.
+   - Use bullets only if they improve scanability. Bullets must be short.
+5. Skill match:
+   - Mention 1-3 skills from top_3_matching_skills only when present.
+6. CTA:
+   - Ask for a quick conversation, interview consideration, or the best next
+     step. Keep it professional and low-pressure.
+7. Signature:
+   - Include full name.
+   - Include phone and email only when present.
+   - Include LinkedIn, GitHub, Portfolio, and other provided application links
+     only when present. Do not write placeholders.
 
 STRICT RULES:
-- Total body word count must be under 200 words
-- Never start any sentence with "I" as the very first word of the email body
-- Never use phrases like: "I hope this email finds you well", "I am excited to",
-  "I am passionate about", "leverage my skills", "synergy", "I wanted to reach out"
-- Never invent facts, metrics, or company details not present in the input data
-- Never include LinkedIn/GitHub lines if those URLs are null
+- Body must be 120-180 words unless there is very little resume data.
+- Never invent facts, metrics, company details, recipient names, or URLs.
+- Do not use generic filler such as "I hope this email finds you well",
+  "I am passionate about", "leverage my skills", "synergy", or "dynamic team".
+- Do not apologize, over-explain, or sound desperate.
 - Return ONLY a valid JSON object, no markdown backticks, no explanation:
   {"subject": "string", "body": "string"}
 """
 
 
+def _expected_subject(context: dict) -> str:
+    role = context.get("role_applied_for") or "the role"
+    name = context.get("candidate_name") or "Candidate"
+    return f"Application for {role} - {name}"
+
+
+def _context_links(context: dict) -> list[dict]:
+    links = context.get("application_links") or []
+    if links:
+        return links
+
+    fallback_links = []
+    for field, label in (
+        ("linkedin_url", "LinkedIn"),
+        ("github_url", "GitHub"),
+        ("portfolio_url", "Portfolio"),
+    ):
+        url = context.get(field)
+        if url:
+            fallback_links.append({"label": label, "url": url})
+    return fallback_links
+
+
 def _build_user_prompt(context: dict) -> str:
-    project = context.get("strongest_project") or {}
-    experience = context.get("strongest_experience") or {}
-    skills = context.get("top_3_matching_skills") or []
-    github = context.get("github_url")
-    linkedin = context.get("linkedin_url")
+    expected_subject = _expected_subject(context)
+    safe_context = {
+        "candidate_name": context.get("candidate_name"),
+        "candidate_email": context.get("candidate_email"),
+        "candidate_phone": context.get("candidate_phone"),
+        "candidate_location": context.get("candidate_location"),
+        "recipient_name": context.get("recipient_name"),
+        "role_applied_for": context.get("role_applied_for"),
+        "company_summary": context.get("company_summary"),
+        "company_industry": context.get("company_industry"),
+        "top_3_matching_skills": context.get("top_3_matching_skills") or [],
+        "strongest_project": context.get("strongest_project"),
+        "strongest_experience": context.get("strongest_experience"),
+        "best_evidence": context.get("best_evidence") or [],
+        "application_angle": context.get("application_angle"),
+        "application_links": _context_links(context),
+    }
 
     return f"""
 Write a cold application email using ONLY the data provided below.
 Do not invent any information not present here.
 
-CANDIDATE FULL NAME (use exactly as-is in subject line and sign-off): {context.get("candidate_name", "Unknown")}
-ROLE APPLYING FOR: {context.get("role_applied_for", "Not specified")}
-COMPANY SUMMARY (use only for opening hook, max 1 sentence): "{context.get("company_summary") or "null — skip the opening hook entirely"}"
-TOP MATCHING SKILLS: {", ".join(skills) if skills else "none identified"}
-BEST PROJECT NAME: {project.get("name", "N/A")}
-BEST PROJECT DESCRIPTION: {project.get("description", "N/A")}
-BEST PROJECT RELEVANCE TO ROLE: {project.get("relevance", "N/A")}
-BEST EXPERIENCE ACHIEVEMENT: {experience.get("key_achievement", "N/A")}
-LINKEDIN URL: {linkedin if linkedin else "null — do not include in email"}
-GITHUB URL: {github if github else "null — do not include in email"}
+EXPECTED SUBJECT:
+{expected_subject}
 
-REMINDER: Subject line must be exactly: "Application for {context.get("role_applied_for", "the role")} – {context.get("candidate_name", "Candidate")}"
+EMAIL CONTEXT:
+{json.dumps(safe_context, indent=2)}
 """
 
 
@@ -95,7 +128,7 @@ def _parse_subject_and_body(raw_text: str) -> tuple[str, str]:
         data = json.loads(raw_text)
         subject = (data.get("subject") or "").strip()
         body = (data.get("body") or "").strip()
-        if subject and body:
+        if body:
             return subject, body
     except (json.JSONDecodeError, AttributeError):
         pass
@@ -115,9 +148,9 @@ def _parse_subject_and_body(raw_text: str) -> tuple[str, str]:
 
     body = "\n".join(body_lines).strip()
 
-    if not subject:
+    if not body:
         raise EmailGenerationError(
-            "Could not parse subject line from Gemini response."
+            "Could not parse email body from Gemini response."
         )
 
     return subject, body
@@ -152,10 +185,11 @@ def generate_email(context: dict) -> dict:
             ),
         )
         
-        subject, body = _parse_subject_and_body(response.text)
+        _subject, body = _parse_subject_and_body(response.text)
+        expected_subject = _expected_subject(context)
 
         return {
-            "subject": subject,
+            "subject": expected_subject,
             "body": body,
             "to_email": context.get("hr_email") or None,
         }
