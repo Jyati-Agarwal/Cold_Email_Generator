@@ -77,9 +77,10 @@ Rules:
   the resume skills list AND the job key_requirements. Do not invent matches.
   If fewer than 3 match, return what matches (even 0 or 1).
 - "strongest_project" pick the project from resume most relevant to the role.
+  If no projects are listed in resume, return null.
   "relevance" must explain WHY it is relevant to this specific role in one sentence.
-- "strongest_experience" pick the experience with the most impressive achievement
-  relative to the target role. "key_achievement" must be one specific bullet point.
+- "strongest_experience" pick the experience with the most impressive content
+  relative to the target role. "key_achievement" must be a concise summary of the impact.
 - "company_summary" must be derived ONLY from the provided search snippets.
   Maximum 2 sentences. Do NOT hallucinate facts not present in the snippets.
 - "hr_email" must be set to the pre-resolved value provided — do not change it.
@@ -144,21 +145,16 @@ if __name__ == "__main__":
         "name": "Jane Smith",
         "email": "jane@example.com",
         "phone": "+1-555-0100",
-        "github": "https://github.com/janesmith",
-        "linkedin": "https://linkedin.com/in/janesmith",
-        "portfolio": "https://janesmith.dev",
-        "skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "React"],
-        "experience": [
-            {
-                "company": "TechStartup Inc",
-                "role": "Backend Engineer",
-                "duration": "2022–2024",
-                "achievements": [
-                    "Reduced API p99 latency by 38% by introducing Redis caching",
-                    "Migrated monolith to microservices, cutting deploy time by 50%",
-                ]
-            }
-        ],
+    "github_url": "https://github.com/janesmith",
+    "linkedin_url": "https://linkedin.com/in/janesmith",
+    "skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "React"],
+    "experience": [
+      {
+        "company": "TechStartup Inc",
+        "title": "Backend Engineer",
+        "duration": "2022–2024"
+      }
+    ],
         "projects": [
             {
                 "name": "AutoSearch",

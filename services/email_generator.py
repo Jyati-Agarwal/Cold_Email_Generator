@@ -10,52 +10,77 @@ class EmailGenerationError(Exception):
 
 
 SYSTEM_INSTRUCTION = """
-You are a senior professional writing a highly-tailored, direct cold email to get a job interview. You write like a human, not a cover letter bot.
+You are writing a professional cold job application email on behalf of a candidate.
+Your goal is to write something direct, specific, and human — not a cover letter.
 
-Structure the email in this exact format:
-1. Greeting — "Hi [Recipient Name]," (extract from the To: email if no name is available, use "Hi there,")
-2. Opening hook — 1 sentence of genuine company-specific research
-3. Explicit intent — Clearly state: "I'm writing to express my interest in the [Role Name] position"
-4. Value proof — 2 sentences max, with specific metrics or scale (e.g. how many users, cities, teams). Pull numbers from the resume wherever possible
-5. Why them specifically — 1 sentence connecting candidate's goals to this company's mission
-6. Strong CTA — End with: "Would you be open to a 15-minute call this week?"
-7. Sign-off — "Best, [Full Name]" followed by LinkedIn and GitHub URLs on separate lines
+SUBJECT LINE RULE — follow this exactly, no exceptions:
+Format: "Application for [Role Name] – [Candidate Full Name]"
+Example: "Application for Junior Data Analyst – Jyati Agarwal"
+Do NOT use project names, metrics, achievements, or creative angles in the subject line.
+Do NOT deviate from this format under any circumstance.
 
-Subject line:
-Make it compelling and specific. Format it like: "[Unique angle] — interested in [Role]". For example: "SIH '24 finalist interested in Founder's Office role at Shram"
+EMAIL BODY STRUCTURE — follow this order exactly:
 
-Tone rules:
-- Professional, confident, warm
-- Under 200 words in the body
-- Never use "I hope this email finds you well" or similar filler
+1. Greeting: "Hi there," — always use this if no recipient name is available
 
-Output format — return ONLY a valid JSON object, no markdown:
-{
-  "subject": "string",
-  "body": "string"
-}
+2. Opening (1 sentence): One genuine, specific observation about the company
+   derived ONLY from the company_summary field. If company_summary is null,
+   skip this sentence entirely — do not invent or hallucinate company details.
+
+3. Intent (1 sentence): "I'm writing to express my interest in the [Role Name] position."
+
+4. Value proof (2 sentences maximum):
+   - Sentence 1: Mention the strongest_project name and what it does technically.
+     Include a real metric only if one is present in the data — do not invent numbers.
+   - Sentence 2: Mention the strongest_experience key_achievement.
+     Again, only use metrics that are explicitly provided.
+
+5. Skill alignment (1 sentence): Connect 1–2 skills from top_3_matching_skills
+   to the role's actual requirements. Be specific — name the skills explicitly.
+
+6. End with a good professional closing line based on the context of the resume and job description, for example - Would you be open to a 15-minute call this week?
+
+7. Sign-off:
+   "Best,
+   [Full Name]"
+   Then on separate lines, include LinkedIn and GitHub URLs only if they are
+   non-null in the data. If null, omit them entirely — do not write placeholder text.
+
+STRICT RULES:
+- Total body word count must be under 200 words
+- Never start any sentence with "I" as the very first word of the email body
+- Never use phrases like: "I hope this email finds you well", "I am excited to",
+  "I am passionate about", "leverage my skills", "synergy", "I wanted to reach out"
+- Never invent facts, metrics, or company details not present in the input data
+- Never include LinkedIn/GitHub lines if those URLs are null
+- Return ONLY a valid JSON object, no markdown backticks, no explanation:
+  {"subject": "string", "body": "string"}
 """
 
 
 def _build_user_prompt(context: dict) -> str:
-    """Build the structured user prompt from the clean context object."""
     project = context.get("strongest_project") or {}
     experience = context.get("strongest_experience") or {}
     skills = context.get("top_3_matching_skills") or []
+    github = context.get("github_url")
+    linkedin = context.get("linkedin_url")
 
     return f"""
-Write a cold email using ONLY this data. Do not invent anything.
+Write a cold application email using ONLY the data provided below.
+Do not invent any information not present here.
 
-Candidate: {context.get("candidate_name", "Unknown")}
-Role applying for: {context.get("role_applied_for", "Not specified")}
-Company summary: "{context.get("company_summary") or "No company info available."}"
-Top matching skills: {", ".join(skills) if skills else "Not specified"}
-Best project: {project.get("name", "N/A")} — {project.get("description", "N/A")}
-  Why relevant: {project.get("relevance", "N/A")}
-Best experience achievement: {experience.get("key_achievement", "N/A")}
-Portfolio: {context.get("portfolio_url") or "N/A"}
-LinkedIn: {context.get("linkedin_url") or "N/A"}
-GitHub: {context.get("github_url") or "N/A"}
+CANDIDATE FULL NAME (use exactly as-is in subject line and sign-off): {context.get("candidate_name", "Unknown")}
+ROLE APPLYING FOR: {context.get("role_applied_for", "Not specified")}
+COMPANY SUMMARY (use only for opening hook, max 1 sentence): "{context.get("company_summary") or "null — skip the opening hook entirely"}"
+TOP MATCHING SKILLS: {", ".join(skills) if skills else "none identified"}
+BEST PROJECT NAME: {project.get("name", "N/A")}
+BEST PROJECT DESCRIPTION: {project.get("description", "N/A")}
+BEST PROJECT RELEVANCE TO ROLE: {project.get("relevance", "N/A")}
+BEST EXPERIENCE ACHIEVEMENT: {experience.get("key_achievement", "N/A")}
+LINKEDIN URL: {linkedin if linkedin else "null — do not include in email"}
+GITHUB URL: {github if github else "null — do not include in email"}
+
+REMINDER: Subject line must be exactly: "Application for {context.get("role_applied_for", "the role")} – {context.get("candidate_name", "Candidate")}"
 """
 
 
