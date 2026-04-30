@@ -30,6 +30,7 @@ Return ONLY a JSON object matching this schema:
   "location": "string or null",
   "headline": "string or null",
   "summary": "string or null",
+  "total_experience": "string or null",
   "github_url": "string or null",
   "linkedin_url": "string or null",
   "portfolio_url": "string or null",
@@ -71,6 +72,7 @@ Return ONLY a JSON object matching this schema:
 Rules:
 - Preserve exact names, phone numbers, emails, company names, project names, and
   numeric metrics as written.
+- Extract total years of experience only when explicitly stated in the resume.
 - Split skills into clean individual skill strings.
 - Keep achievement bullets factual and concise.
 - If a field is missing, use null or [].
@@ -135,6 +137,7 @@ Return ONLY a JSON object matching this schema:
   "location": "string or null",
   "headline": "string or null",
   "summary": "string or null",
+  "total_experience": "string or null",
   "github_url": "string or null",
   "linkedin_url": "string or null",
   "portfolio_url": "string or null",
@@ -174,6 +177,7 @@ Return ONLY a JSON object matching this schema:
 }
 
 Rules:
+- Extract total years of experience only when explicitly stated in the resume.
 - Split skills into clean individual skill strings.
 - Keep achievement bullets factual and concise.
 - If a field is missing, use null or [].

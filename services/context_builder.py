@@ -51,6 +51,23 @@ def _candidate_links(resume_data: dict) -> list[dict]:
     return deduped
 
 
+def _experience_entries(resume_data: dict) -> list[dict]:
+    entries = []
+    for item in resume_data.get("experience") or []:
+        if not isinstance(item, dict):
+            continue
+        entries.append(
+            {
+                "company": item.get("company"),
+                "role": item.get("title") or item.get("role"),
+                "duration": item.get("duration"),
+                "achievements": item.get("achievements") or [],
+                "technologies": item.get("technologies") or [],
+            }
+        )
+    return entries
+
+
 def _enforce_resume_identity(context: dict, resume_data: dict) -> dict:
     context["candidate_name"] = (
         context.get("candidate_name")
@@ -73,6 +90,17 @@ def _enforce_resume_identity(context: dict, resume_data: dict) -> dict:
     context["github_url"] = resume_data.get("github_url") or context.get("github_url")
     context["portfolio_url"] = resume_data.get("portfolio_url") or context.get("portfolio_url")
     context["application_links"] = _candidate_links(resume_data)
+    context["candidate_headline"] = (
+        context.get("candidate_headline")
+        or resume_data.get("headline")
+        or resume_data.get("summary")
+    )
+    context["years_of_experience"] = (
+        context.get("years_of_experience")
+        or resume_data.get("total_experience")
+    )
+    if not context.get("company_experience"):
+        context["company_experience"] = _experience_entries(resume_data)[:3]
     return context
 
 
@@ -125,6 +153,23 @@ Return ONLY a valid JSON object matching this schema:
   "candidate_email": "string or null",
   "candidate_phone": "string or null",
   "candidate_location": "string or null",
+  "candidate_headline": "string or null",
+  "years_of_experience": "string or null",
+  "current_or_recent_role": {
+    "company": "string or null",
+    "title": "string or null",
+    "duration": "string or null",
+    "summary": "string or null"
+  },
+  "experience_summary": "string or null",
+  "company_experience": [
+    {
+      "company": "string or null",
+      "role": "string or null",
+      "duration": "string or null",
+      "impact": "string or null"
+    }
+  ],
   "top_3_matching_skills": ["string"],
   "strongest_project": {
     "name": "string",
@@ -162,6 +207,16 @@ Rules:
 - "top_3_matching_skills" should contain up to 3 resume-backed skills that best
   match the job requirements. A skill may semantically match a requirement, but
   the named skill must appear somewhere in the resume data.
+- "years_of_experience" should be computed only from explicit resume dates,
+  durations, or resume text. Use an approximate phrase like "about 2 years" only
+  when the source data supports it. If not supported, return null.
+- "current_or_recent_role" must come from the candidate's most recent resume
+  experience, not from projects.
+- "experience_summary" must be one concise sentence explaining the candidate's
+  professional/company experience for this target role. Mention company names
+  and YOE when available.
+- "company_experience" must preserve the top 1-3 actual company/employer
+  experiences from the resume. Do not put personal projects here.
 - "strongest_project" pick the project from resume most relevant to the role.
   If no projects are listed in resume, return null.
   "relevance" must explain why it is relevant to this specific role in one
@@ -227,6 +282,7 @@ Synthesise the following data into the required JSON context object.
         matching_skills: list[str] = context.get("top_3_matching_skills") or []
         context["top_3_matching_skills"] = _dedupe_preserve_order(matching_skills)[:3]
         context["best_evidence"] = (context.get("best_evidence") or [])[:3]
+        context["company_experience"] = (context.get("company_experience") or [])[:3]
         context["role_applied_for"] = (
             context.get("role_applied_for")
             or job_data.get("role")

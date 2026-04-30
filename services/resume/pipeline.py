@@ -2,6 +2,7 @@ from .pdf_extractor import (
     extract_links_from_pdf, 
     extract_text_from_pdf
 )
+from urllib.parse import urlparse
 from .text_fallback import extract_links_from_text
 from .gemini_parser import (
     parse_with_gemini_text, 
@@ -49,6 +50,20 @@ def _link_source(annotation_links: dict, text_links: dict) -> str:
     return "not_found"
 
 
+def _valid_portfolio_url(url):
+    if not url:
+        return None
+
+    parsed = urlparse(url)
+    netloc = parsed.netloc.lower()
+    if "github.com" in netloc:
+        path_parts = [part for part in parsed.path.strip("/").split("/") if part]
+        # A GitHub profile belongs in github_url; a repo should stay in links,
+        # not be mislabeled as a personal portfolio.
+        return None if len(path_parts) >= 1 else url
+    return url
+
+
 def parse_resume(pdf_path: str, client) -> dict:
     # Track 1: Extract links from PDF annotations (ground truth)
     extracted_links = extract_links_from_pdf(pdf_path)
@@ -80,7 +95,7 @@ def parse_resume(pdf_path: str, client) -> dict:
         or text_links.get("linkedin")
         or parsed.get("linkedin_url")
     )
-    parsed["portfolio_url"] = (
+    parsed["portfolio_url"] = _valid_portfolio_url(
         extracted_links.get("portfolio")
         or text_links.get("portfolio")
         or parsed.get("portfolio_url")

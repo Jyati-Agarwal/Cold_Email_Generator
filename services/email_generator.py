@@ -17,8 +17,9 @@ letter and not a marketing sequence.
 What good job-application outreach does:
 - Uses a clear, searchable subject line.
 - Opens with a specific company/role hook only when factual context exists.
-- Proves fit with 2-3 resume-backed facts, preferring metrics, shipped work,
-  technical depth, internships, production impact, or standout projects.
+- Proves fit with 2-3 resume-backed facts, prioritizing actual company
+  experience, role/title, YOE, internships, production impact, and metrics
+  before personal projects.
 - Makes one low-friction next-step ask.
 - Keeps the message concise and easy to scan.
 
@@ -38,8 +39,13 @@ EMAIL BODY STRUCTURE:
 3. Intent:
    - State the candidate is applying for/interested in the role.
 4. Proof:
-   - Include 2-3 concise proof points from best_evidence, strongest_project,
-     strongest_experience, or application_angle.
+   - If years_of_experience, current_or_recent_role, experience_summary, or
+     company_experience exists, include it before mentioning projects.
+   - Do not write a project-only email when company/professional experience is
+     present in the context.
+   - Include 2-3 concise proof points from experience_summary,
+     current_or_recent_role, company_experience, strongest_experience,
+     best_evidence, strongest_project, or application_angle.
    - Use bullets only if they improve scanability. Bullets must be short.
 5. Skill match:
    - Mention 1-3 skills from top_3_matching_skills only when present.
@@ -49,14 +55,17 @@ EMAIL BODY STRUCTURE:
 7. Signature:
    - Include full name.
    - Include phone and email only when present.
-   - Include LinkedIn, GitHub, Portfolio, and other provided application links
-     only when present. Do not write placeholders.
+   - Include at most three links: LinkedIn, GitHub profile, and a true
+     portfolio/personal website if present. Do not dump every project URL.
+   - Do not label a GitHub repository as Portfolio.
 
 STRICT RULES:
 - Body must be 120-180 words unless there is very little resume data.
 - Never invent facts, metrics, company details, recipient names, or URLs.
+- Never omit company experience/YOE when they are present in the context.
 - Do not use generic filler such as "I hope this email finds you well",
   "I am passionate about", "leverage my skills", "synergy", or "dynamic team".
+- Avoid weak filler like "I am confident my experience aligns well".
 - Do not apologize, over-explain, or sound desperate.
 - Return ONLY a valid JSON object, no markdown backticks, no explanation:
   {"subject": "string", "body": "string"}
@@ -72,7 +81,13 @@ def _expected_subject(context: dict) -> str:
 def _context_links(context: dict) -> list[dict]:
     links = context.get("application_links") or []
     if links:
-        return links
+        allowed_labels = {"linkedin", "github", "portfolio"}
+        filtered_links = [
+            link
+            for link in links
+            if (link.get("label") or "").lower() in allowed_labels
+        ]
+        return filtered_links[:3]
 
     fallback_links = []
     for field, label in (
@@ -93,6 +108,11 @@ def _build_user_prompt(context: dict) -> str:
         "candidate_email": context.get("candidate_email"),
         "candidate_phone": context.get("candidate_phone"),
         "candidate_location": context.get("candidate_location"),
+        "candidate_headline": context.get("candidate_headline"),
+        "years_of_experience": context.get("years_of_experience"),
+        "current_or_recent_role": context.get("current_or_recent_role"),
+        "experience_summary": context.get("experience_summary"),
+        "company_experience": context.get("company_experience") or [],
         "recipient_name": context.get("recipient_name"),
         "role_applied_for": context.get("role_applied_for"),
         "company_summary": context.get("company_summary"),
