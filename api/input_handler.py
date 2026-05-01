@@ -18,6 +18,7 @@ async def process_inputs(
     resume: UploadFile = File(..., description="User Resume (PDF)"),
     job_description_text: Optional[str] = Form(None, description="Job description text"),
     job_description_image: Optional[UploadFile] = File(None, description="Job description image"),
+    user_id: Optional[str] = Form(None, description="User ID for Gmail status check"),
 ):
     """
     Full pipeline: resume + JD → parse → search → context → email.
@@ -106,6 +107,14 @@ async def process_inputs(
         t0 = time.time()
         try:
             email_result = generate_email(context)
+            
+            # Add extra fields requested by frontend
+            from auth.token_store import is_gmail_connected
+            email_result["gmail_connected"] = is_gmail_connected(user_id) if user_id else False
+            email_result["candidate_name"] = resume_data.get("name", "") if resume_data else ""
+            email_result["github_url"] = resume_data.get("github_url", "") if resume_data else None
+            email_result["linkedin_url"] = resume_data.get("linkedin_url", "") if resume_data else None
+            
             result["email"] = email_result
             log_step("generate_email", "success", int((time.time() - t0) * 1000))
         except (EmailGenerationError, Exception) as e:

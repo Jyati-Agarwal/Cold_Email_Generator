@@ -27,7 +27,7 @@ app.add_middleware(
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 from api.input_handler import router as input_router
-from api.gmail_handler import router as gmail_router
+from api.gmail_routes import router as gmail_router
 
 app.include_router(input_router, prefix="/api")
 app.include_router(gmail_router, prefix="/api")
